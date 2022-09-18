@@ -11,6 +11,7 @@ import uuid
 import shutil
 import hashlib
 import requests
+from tqdm import tqdm
 from bs4 import BeautifulSoup
 
 
@@ -20,14 +21,15 @@ def get_website_data(url: str):
     Args:
         url: website url
     """
-    print(f"querying {url}")
+    tqdm.write(f"querying {url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 12871.102.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.141 Safari/537.36"
     }
     html_data = requests.get(url, headers=headers, timeout=2)
-    print("finished query")
+    history = html_data.history
+
     soup = BeautifulSoup(html_data.text, "html.parser")
-    return soup
+    return soup, history
 
 
 def create_content_hash(filepath: str):
@@ -46,27 +48,28 @@ def create_content_hash(filepath: str):
     return digest
 
 
-def download_images(html_data, python_details_dict: dict):
+def download_images(url: str, html_data, python_details_dict: dict):
     """
     finds and downloads images from url
     Args:
         url: website url
-        traits: supposed traits of images being downloaded
+        html_data: all html data
+        python_details_dict: metadata details of python from ad
     """
     start_time = time.time()
     img_downloaded = 0
-    if len(python_details_dict["traits"]) == 1:
+    if len(python_details_dict["traits"]) == 2:
         main_trait = python_details_dict["traits"][0]
     else:
         main_trait = "combo"
 
-    for image in html_data.find_all("img"):
+    for image in html_data.find_all("img", class_="img-thumbnail"):
         image_source = requests.compat.urljoin(url, image["src"])
 
         if "static" not in image_source:
             img_downloaded += 1
-            print(f"\n##### Downloading: {image_source}\n")
-            web_connection = requests.get(image_source, timeout=2)
+            # tqdm.write(f"\n##### Downloading: {image_source}\n")
+            web_connection = requests.get(image_source, timeout=1)
 
             temp_loc = "/tmp/temp_image.png"
             open(temp_loc, "wb").write(web_connection.content)
@@ -83,7 +86,8 @@ def download_images(html_data, python_details_dict: dict):
                 json.dump(python_details_dict, f)
 
     end_time = time.time()
-    print(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
+    tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
+    return img_downloaded
 
 
 def get_python_details(html_data):
@@ -143,25 +147,128 @@ def get_ball_python_data(url: str):
         url: website url to scrape
     """
     web_start = time.time()
-    html_data = get_website_data(url)
+    html_data, history = get_website_data(url)
     web_stop = time.time()
-    print(f"Website queried in {web_stop - web_start} seconds")
+    tqdm.write(f"Website queried in {web_stop - web_start} seconds")
 
     python_details_dict = get_python_details(html_data)
 
-    download_images(html_data, python_details_dict)
+    num_images = download_images(url, html_data, python_details_dict)
+    return num_images
 
 
-def find_ball_python_ads(url:str):
+def check_ad_tracking(url: str):
+    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "r") as f:
+        tracking_dict = json.load(f)
+
+    if url in tracking_dict:
+        return False
+    else:
+        return True
+
+
+def update_ad_tracking(url:str, num_imgs: int):
+    current_ad = {url: num_imgs}
+
+    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "r") as f:
+        tracking_dict = json.load(f)
+
+    tracking_dict.update(current_ad)
+
+    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "w") as f: 
+        json.dump(tracking_dict, f) 
+
+
+def find_ball_python_ads(url:str, num_ads: int):
     """
     function that looks at webpage earlier in hierarchy to find subpages
     Args:
         url: webpage with ads to look at
+        num_ads: number of adds to look at
     """
+    more_pages = True
+    page_num = 1
+    num_ads_viewed = 0
+    while more_pages:
+        url = url.split("?")[0]
+        url = f"{url}?page={page_num}"
+
+        html_data, history = get_website_data(url)
+        if history:
+            break
+
+        ads_list = []
+        not_ads_list = []
+        for link in html_data.find_all("a", href=True):
+            link_href = link["href"]
+            try:
+                last_int = int(link_href[-1])
+            except:
+                last_int = None
+            if "ball-pythons/" in link_href and last_int is not None:
+                ad_link = requests.compat.urljoin(url, link_href)
+                ads_list.append(ad_link)
+            else:
+                not_ads_list.append(link_href)
+        
+        for ad_url in tqdm(ads_list):
+            should_ingest = check_ad_tracking(ad_url)
+            if should_ingest:
+                num_images = get_ball_python_data(ad_url)
+                update_ad_tracking(ad_url, num_images)
+
+            num_ads_viewed += 1
+            
+            if num_ads_viewed >= num_ads:
+                break
+
+        if num_ads_viewed >= num_ads:
+                break
+
+        page_num += 1
+
+
+def check_chosen_urls(num_ads: int):
+    """
+    looks at num_ads for each url in list
+    Args:
+        num_ads: number of ads to look at per url 
+    """
+    url_list = [
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mahogany",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
+    ]
+
+    for url in url_list:
+        find_ball_python_ads(url, int(num_ads))
 
 
 if __name__ == "__main__":
-    url = sys.argv[1]
+    # url = sys.argv[1]
     # get_ball_python_data(url)
-    data = get_website_data(url)
-    print(data)
+    # find_ball_python_ads(url)
+    num_ads = sys.argv[1]
+    check_chosen_urls(num_ads)
