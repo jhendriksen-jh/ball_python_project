@@ -13,6 +13,7 @@ import hashlib
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
+from requests import ConnectTimeout, ReadTimeout
 
 
 def get_website_data(url: str):
@@ -25,11 +26,17 @@ def get_website_data(url: str):
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 12871.102.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.141 Safari/537.36"
     }
-    html_data = requests.get(url, headers=headers, timeout=2)
-    history = html_data.history
-
-    soup = BeautifulSoup(html_data.text, "html.parser")
-    return soup, history
+    try:
+        html_data = requests.get(url, headers=headers, timeout=1)
+        history = html_data.history
+        soup = BeautifulSoup(html_data.text, "html.parser")
+        return soup, history
+    except ConnectTimeout as e:
+        tqdm.write(str(e))
+        return None, None
+    except ReadTimeout as e:
+        tqdm.write(str(e))
+        return None, None
 
 
 def create_content_hash(filepath: str):
@@ -58,7 +65,7 @@ def download_images(url: str, html_data, python_details_dict: dict):
     """
     start_time = time.time()
     img_downloaded = 0
-    if len(python_details_dict["traits"]) == 2:
+    if len(python_details_dict["traits"]) == 1:
         main_trait = python_details_dict["traits"][0]
     else:
         main_trait = "combo"
@@ -69,25 +76,32 @@ def download_images(url: str, html_data, python_details_dict: dict):
         if "static" not in image_source:
             img_downloaded += 1
             # tqdm.write(f"\n##### Downloading: {image_source}\n")
-            web_connection = requests.get(image_source, timeout=1)
+            try:
+                web_connection = requests.get(image_source, timeout=1)
+                temp_loc = "/tmp/temp_image.png"
+                open(temp_loc, "wb").write(web_connection.content)
 
-            temp_loc = "/tmp/temp_image.png"
-            open(temp_loc, "wb").write(web_connection.content)
+                img_content_hash = create_content_hash(temp_loc)
 
-            img_content_hash = create_content_hash(temp_loc)
+                image_name = f"{main_trait}_{img_content_hash}"
+                filepath = (
+                    f"/home/jordan/Documents/datasets/ball_pythons/{main_trait}/{image_name}/"
+                )
+                os.makedirs(filepath, exist_ok=True)
+                shutil.move(temp_loc,f"{filepath}{image_name}.png")
+                with open(f"{filepath}{image_name}_metadata.json", "w") as f:
+                    json.dump(python_details_dict, f)
 
-            image_name = f"{main_trait}_{img_content_hash}"
-            filepath = (
-                f"/home/jordan/Documents/datasets/ball_pythons/{main_trait}/{image_name}/"
-            )
-            os.makedirs(filepath, exist_ok=True)
-            shutil.move(temp_loc,f"{filepath}{image_name}.png")
-            with open(f"{filepath}{image_name}_metadata.json", "w") as f:
-                json.dump(python_details_dict, f)
+                end_time = time.time()
+                tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
+                return img_downloaded
 
-    end_time = time.time()
-    tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
-    return img_downloaded
+            except ConnectTimeout as e:
+                tqdm.write(str(e))
+                return None
+            except ReadTimeout as e:
+                tqdm.write(str(e))
+                return None
 
 
 def get_python_details(html_data):
@@ -108,36 +122,39 @@ def get_python_details(html_data):
     ]
     raw_details = html_data.find(class_="details")
 
-    available_info = raw_details.find_all("dt")
-    available_info = [str(field).split('"')[1] for field in available_info]
+    if raw_details:
+        available_info = raw_details.find_all("dt")
+        available_info = [str(field).split('"')[1] for field in available_info]
 
-    actual_info = raw_details.find_all("dd")
-    actual_info = [str(value).split("dd")[1].replace("</","").replace(">","") for value in actual_info]
-    
-    python_details_dict = {
-        "raw_details": raw_details.prettify()
-    }
+        actual_info = raw_details.find_all("dd")
+        actual_info = [str(value).split("dd")[1].replace("</","").replace(">","") for value in actual_info]
+        
+        python_details_dict = {
+            "raw_details": raw_details.prettify()
+        }
 
-    traits_pattern = r"badge.*span"
+        traits_pattern = r"badge.*span"
 
-    for field, value in zip(available_info, actual_info):
-        if field in list_wanted_fields:
-            if field == "sex":
-                value = value.split('"')[1]
-            elif field == "traits":
-                trait_chunks = re.findall(traits_pattern, value)
-                trait_list = []
-                for trait in trait_chunks:
-                    trait = trait.replace("span","").split('"')[-1]
-                    trait_list.append(trait)
-                value = trait_list
-            elif field == "price":
-                value = value.split('"')[-1]
-            else:
-                pass
-            python_details_dict[field] = value
+        for field, value in zip(available_info, actual_info):
+            if field in list_wanted_fields:
+                if field == "sex":
+                    value = value.split('"')[1]
+                elif field == "traits":
+                    trait_chunks = re.findall(traits_pattern, value)
+                    trait_list = []
+                    for trait in trait_chunks:
+                        trait = trait.replace("span","").split('"')[-1]
+                        trait_list.append(trait)
+                    value = trait_list
+                elif field == "price":
+                    value = value.split('"')[-1]
+                else:
+                    pass
+                python_details_dict[field] = value
 
-    return python_details_dict
+        return python_details_dict
+    else:
+        return None
 
 
 def get_ball_python_data(url: str):
@@ -151,10 +168,14 @@ def get_ball_python_data(url: str):
     web_stop = time.time()
     tqdm.write(f"Website queried in {web_stop - web_start} seconds")
 
-    python_details_dict = get_python_details(html_data)
+    if html_data:
+        python_details_dict = get_python_details(html_data)
 
-    num_images = download_images(url, html_data, python_details_dict)
-    return num_images
+        if python_details_dict:
+            num_images = download_images(url, html_data, python_details_dict)
+            return num_images
+        else:
+            return None
 
 
 def check_ad_tracking(url: str):
@@ -189,43 +210,58 @@ def find_ball_python_ads(url:str, num_ads: int):
     more_pages = True
     page_num = 1
     num_ads_viewed = 0
-    while more_pages:
-        url = url.split("?")[0]
-        url = f"{url}?page={page_num}"
+    with tqdm(total=num_ads, desc="total adds for morph - ") as pbar:
+        while more_pages:
+            url = url.split("?")[0]
+            url = f"{url}?page={page_num}&sort=lg"
+            url = f"{url}?page={page_num}"
 
-        html_data, history = get_website_data(url)
-        if history:
-            break
+            html_data, history = get_website_data(url)
+            if history:
+                break
+            if not html_data:
+                break
 
-        ads_list = []
-        not_ads_list = []
-        for link in html_data.find_all("a", href=True):
-            link_href = link["href"]
-            try:
-                last_int = int(link_href[-1])
-            except:
-                last_int = None
-            if "ball-pythons/" in link_href and last_int is not None:
-                ad_link = requests.compat.urljoin(url, link_href)
-                ads_list.append(ad_link)
-            else:
-                not_ads_list.append(link_href)
-        
-        for ad_url in tqdm(ads_list):
-            should_ingest = check_ad_tracking(ad_url)
-            if should_ingest:
-                num_images = get_ball_python_data(ad_url)
-                update_ad_tracking(ad_url, num_images)
-
-            num_ads_viewed += 1
+            ads_list = []
+            not_ads_list = []
+            for link in html_data.find_all("a", href=True):
+                link_href = link["href"]
+                try:
+                    last_int = int(link_href[-1])
+                except:
+                    last_int = None
+                if "ball-pythons/" in link_href and last_int is not None:
+                    ad_link = requests.compat.urljoin(url, link_href)
+                    ads_list.append(ad_link)
+                else:
+                    not_ads_list.append(link_href)
             
+            for ad_url in tqdm(ads_list, desc="ads in page - "):
+                should_ingest = check_ad_tracking(ad_url)
+                if should_ingest:
+                    try:
+                        num_images = get_ball_python_data(ad_url)
+                        if num_images:
+                            update_ad_tracking(ad_url, num_images)
+                        else:
+                            num_images = 0
+                            update_ad_tracking(ad_url, num_images)
+                        num_ads_viewed += 1
+                        pbar.update(1)
+                    except ConnectTimeout as e:
+                        tqdm.write(str(e))
+                        continue
+                    except ReadTimeout as e:
+                        tqdm.write(str(e))
+                        continue
+                
+                if num_ads_viewed >= num_ads:
+                    break
+
             if num_ads_viewed >= num_ads:
-                break
+                    break
 
-        if num_ads_viewed >= num_ads:
-                break
-
-        page_num += 1
+            page_num += 1
 
 
 def check_chosen_urls(num_ads: int):
@@ -235,28 +271,28 @@ def check_chosen_urls(num_ads: int):
         num_ads: number of ads to look at per url 
     """
     url_list = [
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
+        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mahogany",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
