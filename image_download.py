@@ -13,7 +13,7 @@ import hashlib
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
-from requests import ConnectTimeout, ReadTimeout
+from requests import ConnectTimeout, ReadTimeout, ConnectionError
 
 
 def get_website_data(url: str):
@@ -33,10 +33,10 @@ def get_website_data(url: str):
         return soup, history
     except ConnectTimeout as e:
         tqdm.write(str(e))
-        return None, None
+        return "CT", None
     except ReadTimeout as e:
         tqdm.write(str(e))
-        return None, None
+        return "RT", None
 
 
 def create_content_hash(filepath: str):
@@ -102,6 +102,9 @@ def download_images(url: str, html_data, python_details_dict: dict):
             except ReadTimeout as e:
                 tqdm.write(str(e))
                 return None
+            except ConnectionError as e:
+                tqdm.write(str(e))
+                return None
 
 
 def get_python_details(html_data):
@@ -120,7 +123,10 @@ def get_python_details(html_data):
         "proven_breeder",
         "price",
     ]
-    raw_details = html_data.find(class_="details")
+    if html_data != "RT" and html_data != "CT":
+        raw_details = html_data.find(class_="details")
+    else:
+        return None
 
     if raw_details:
         available_info = raw_details.find_all("dt")
@@ -212,11 +218,14 @@ def find_ball_python_ads(url:str, num_ads: int):
     num_ads_viewed = 0
     with tqdm(total=num_ads, desc="total adds for morph - ") as pbar:
         while more_pages:
+            initial_connection = False
             url = url.split("?")[0]
             url = f"{url}?page={page_num}&sort=lg"
-            url = f"{url}?page={page_num}"
-
-            html_data, history = get_website_data(url)
+            # url = f"{url}?page={page_num}"
+            while not initial_connection:
+                html_data, history = get_website_data(url)
+                if html_data != "RT" and html_data != "CT":
+                    initial_connection = True
             if history:
                 break
             if not html_data:
@@ -271,28 +280,28 @@ def check_chosen_urls(num_ads: int):
         num_ads: number of ads to look at per url 
     """
     url_list = [
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
-        # "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mahogany",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
         "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
