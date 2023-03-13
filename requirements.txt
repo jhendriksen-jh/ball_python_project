@@ -53,3 +53,4 @@ urllib3==1.26.12
 wcwidth==0.2.5
 bs4
 requests
+retry

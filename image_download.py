@@ -1,5 +1,7 @@
 """
 This will be the code that handles going to websites and downloading images/data
+As of 3/12/2023 the website has been updated and this script no longer works 
+ - links for ads are deeply nested and aren't easily parsed out anymore
 """
 
 import os
@@ -11,7 +13,9 @@ import uuid
 import shutil
 import hashlib
 import requests
+
 from tqdm import tqdm
+from retry import retry
 from bs4 import BeautifulSoup
 from requests import ConnectTimeout, ReadTimeout, ConnectionError
 
@@ -162,7 +166,7 @@ def get_python_details(html_data):
     else:
         return None
 
-
+@retry(tries=3, delay=0.5, backoff=2)
 def get_ball_python_data(url: str):
     """
     handles functions that scrape a website url
@@ -220,7 +224,7 @@ def find_ball_python_ads(url:str, num_ads: int):
         while more_pages:
             initial_connection = False
             url = url.split("?")[0]
-            url = f"{url}?page={page_num}&sort=lg"
+            url = f"{url}?page={page_num}&ordering=traits"
             # url = f"{url}?page={page_num}"
             while not initial_connection:
                 html_data, history = get_website_data(url)
