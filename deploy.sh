@@ -1,0 +1,1 @@
+docker build ./ -t ball_python_project/torch_image:dev
