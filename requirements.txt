@@ -1,4 +1,4 @@
-ipykernel
+ipykernel==6.21.1
 jupyter
 kaggle
 matplotlib

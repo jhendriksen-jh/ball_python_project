@@ -1,4 +1,4 @@
 -i https://download.pytorch.org/whl/cu116
-torch==1.13.1+cu116
-# torchaudio
+torch
+torchaudio
 torchvision
