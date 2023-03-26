@@ -13,6 +13,7 @@ import uuid
 import shutil
 import hashlib
 import requests
+import random
 
 from tqdm import tqdm
 from retry import retry
@@ -81,6 +82,8 @@ def download_images(url: str, html_data, python_details_dict: dict):
             img_downloaded += 1
             # tqdm.write(f"\n##### Downloading: {image_source}\n")
             try:
+                # images now have source separated from img tag
+                # look for href with "/media/raw_images"
                 web_connection = requests.get(image_source, timeout=1)
                 temp_loc = "/tmp/temp_image.png"
                 open(temp_loc, "wb").write(web_connection.content)
@@ -89,7 +92,7 @@ def download_images(url: str, html_data, python_details_dict: dict):
 
                 image_name = f"{main_trait}_{img_content_hash}"
                 filepath = (
-                    f"/home/jordan/Documents/datasets/ball_pythons/{main_trait}/{image_name}/"
+                    f"/home/jordan/github/datasets/ball_pythons/{main_trait}/{image_name}/"
                 )
                 os.makedirs(filepath, exist_ok=True)
                 shutil.move(temp_loc,f"{filepath}{image_name}.png")
@@ -173,11 +176,13 @@ def get_ball_python_data(url: str):
     Args:
         url: website url to scrape
     """
+    import pudb; pudb.set_trace()
     web_start = time.time()
     html_data, history = get_website_data(url)
     web_stop = time.time()
     tqdm.write(f"Website queried in {web_stop - web_start} seconds")
-
+    with open("./test_ad.html", "w") as f:
+        f.write(str(html_data.prettify()))
     if html_data:
         python_details_dict = get_python_details(html_data)
 
@@ -189,7 +194,7 @@ def get_ball_python_data(url: str):
 
 
 def check_ad_tracking(url: str):
-    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "r") as f:
+    with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "r") as f:
         tracking_dict = json.load(f)
 
     if url in tracking_dict:
@@ -201,12 +206,12 @@ def check_ad_tracking(url: str):
 def update_ad_tracking(url:str, num_imgs: int):
     current_ad = {url: num_imgs}
 
-    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "r") as f:
+    with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "r") as f:
         tracking_dict = json.load(f)
 
     tracking_dict.update(current_ad)
 
-    with open("/home/jordan/Documents/datasets/ball_pythons/url_tracking.json", "w") as f: 
+    with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "w") as f: 
         json.dump(tracking_dict, f) 
 
 
@@ -283,41 +288,68 @@ def check_chosen_urls(num_ads: int):
     Args:
         num_ads: number of ads to look at per url 
     """
-    url_list = [
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mahogany",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
-        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
-    ]
+    # url_list = [
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/banana",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(vpi)",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/clown",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/hypo",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pastel",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/piebald",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/pinstripe",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/yellow%20belly",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/acid",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/albino",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/axanthic%20(tsk)",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/bamboo",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/black%20pastel",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/cinnamon",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/desert%20ghost",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/enchi",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/fire",c
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/ghi",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/leopard",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mojave",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/lesser",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/mahogany",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
+    #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
+    # ]
+    url_list = ["https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons?state=for_sale"]
 
     for url in url_list:
         find_ball_python_ads(url, int(num_ads))
 
 
+def check_random_ad_url(num_ads):
+    """
+    creates random URL to check for images
+    """
+    import pudb; pudb.set_trace()
+    base_url = "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/"
+    rand_selection = random.sample(list(range(999999, 2000000)), num_ads)
+    for rand_num in tqdm(rand_selection, desc="ads in page - "):
+        ad_url = base_url + f"{rand_num}"
+        ad_url = "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/1384424"
+        should_ingest = check_ad_tracking(ad_url)
+        if should_ingest:
+            try:
+                num_images = get_ball_python_data(ad_url)
+                if num_images:
+                    update_ad_tracking(ad_url, num_images)
+                else:
+                    num_images = 0
+
+            except ConnectTimeout as e:
+                tqdm.write(str(e))
+                continue
+            except ReadTimeout as e:
+                tqdm.write(str(e))
+                continue
+
 if __name__ == "__main__":
     # url = sys.argv[1]
     # get_ball_python_data(url)
     # find_ball_python_ads(url)
-    num_ads = sys.argv[1]
-    check_chosen_urls(num_ads)
+    num_ads = int(sys.argv[1])
+    check_random_ad_url(num_ads)
