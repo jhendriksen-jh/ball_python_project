@@ -75,8 +75,11 @@ def download_images(url: str, html_data, python_details_dict: dict):
     else:
         main_trait = "combo"
 
-    for image in html_data.find_all("img", class_="img-thumbnail"):
-        image_source = requests.compat.urljoin(url, image["src"])
+    a_matches = html_data.find_all("a")
+    href_list = [i for i in a_matches if i.get('itemprop') == 'contentUrl']
+    add_id = f"{main_trait}_{uuid.uuid4().hex}"
+    for image_ref in href_list:
+        image_source = requests.compat.urljoin(url, image_ref["href"])
 
         if "static" not in image_source:
             img_downloaded += 1
@@ -92,16 +95,12 @@ def download_images(url: str, html_data, python_details_dict: dict):
 
                 image_name = f"{main_trait}_{img_content_hash}"
                 filepath = (
-                    f"/home/jordan/github/datasets/ball_pythons/{main_trait}/{image_name}/"
+                    f"/home/jordan/github/datasets/ball_pythons/{main_trait}/{add_id}/"
                 )
                 os.makedirs(filepath, exist_ok=True)
                 shutil.move(temp_loc,f"{filepath}{image_name}.png")
                 with open(f"{filepath}{image_name}_metadata.json", "w") as f:
                     json.dump(python_details_dict, f)
-
-                end_time = time.time()
-                tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
-                return img_downloaded
 
             except ConnectTimeout as e:
                 tqdm.write(str(e))
@@ -112,7 +111,9 @@ def download_images(url: str, html_data, python_details_dict: dict):
             except ConnectionError as e:
                 tqdm.write(str(e))
                 return None
-
+    end_time = time.time()
+    tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
+    return img_downloaded
 
 def get_python_details(html_data):
     """
@@ -122,50 +123,64 @@ def get_python_details(html_data):
     Returns:
         python_details_dict: dictionary containing python image metadata
     """
-    list_wanted_fields = [
-        "sex",
-        "traits",
-        "weight",
-        "dob",
-        "proven_breeder",
-        "price",
-    ]
+    dict_wanted_fields = {
+         "Sex:": "sex",
+         "Traits:": "traits",
+         "Weight:": "weight",
+         "Birth:": "dob",
+        # "proven_breeder",
+        # "price",
+    }
+
     if html_data != "RT" and html_data != "CT":
-        raw_details = html_data.find(class_="details")
+        raw_details = html_data.find(class_="snake-info-card")
     else:
         return None
 
     if raw_details:
-        available_info = raw_details.find_all("dt")
-        available_info = [str(field).split('"')[1] for field in available_info]
-
-        actual_info = raw_details.find_all("dd")
-        actual_info = [str(value).split("dd")[1].replace("</","").replace(">","") for value in actual_info]
+        info_pattern = r'>(.*?)<\/span'
+        available_info = raw_details.find_all("div", class_="snake-info-card-row")
+        actual_info = {}
+        for field in available_info:
+            field_str = str(field)
+            info_match = re.search(info_pattern, field_str)
+            if info_match:
+                div_field = info_match.group(1).strip()
+                actual_key = dict_wanted_fields.get(div_field)
+                if actual_key is not None:
+                    actual_info[actual_key] = field_str
+            elif "snake-price" in field_str:
+                actual_info["price"] = field_str
+        # actual_info = raw_details.find_all("dd")
+        # actual_info = [str(value).split("dd")[1].replace("</","").replace(">","") for value in actual_info]
         
         python_details_dict = {
             "raw_details": raw_details.prettify()
         }
 
-        traits_pattern = r"badge.*span"
+        traits_pattern = r'">(.*?)</span>'
 
-        for field, value in zip(available_info, actual_info):
-            if field in list_wanted_fields:
-                if field == "sex":
-                    value = value.split('"')[1]
-                elif field == "traits":
-                    trait_chunks = re.findall(traits_pattern, value)
-                    trait_list = []
-                    for trait in trait_chunks:
-                        trait = trait.replace("span","").split('"')[-1]
-                        trait_list.append(trait)
-                    value = trait_list
-                elif field == "price":
-                    value = value.split('"')[-1]
-                else:
-                    pass
-                python_details_dict[field] = value
+        for field, raw_div in actual_info.items():
+            if field == "sex":
+                search_pattern = r'alt="(.*?)" class'
+                field_match = re.search(search_pattern, raw_div)
+                value = field_match.group(1).strip()
+            elif field == "traits":
+                trait_chunks = re.findall(traits_pattern, raw_div)
+                trait_list = [trait.strip() for trait in trait_chunks if 'Trait' not in trait.strip()]
+                value = trait_list
+            elif field == "price":
+                search_pattern = r'">(.*?)</h1>'
+                field_match = re.search(search_pattern, raw_div)
+                value = field_match.group(1).strip()
+            elif field == 'dob' or field == 'weight':
+                value = raw_div.split('">')[-1].split('<')[0]
+            python_details_dict[field] = value
 
-        return python_details_dict
+        if python_details_dict.get("traits") is not None:
+            return python_details_dict
+        else:
+            return None
     else:
         return None
 
@@ -176,13 +191,13 @@ def get_ball_python_data(url: str):
     Args:
         url: website url to scrape
     """
-    import pudb; pudb.set_trace()
     web_start = time.time()
     html_data, history = get_website_data(url)
     web_stop = time.time()
     tqdm.write(f"Website queried in {web_stop - web_start} seconds")
-    with open("./test_ad.html", "w") as f:
-        f.write(str(html_data.prettify()))
+    # with open("./test_ad.html", "w") as f:
+    #     f.write(str(html_data.prettify()))
+
     if html_data:
         python_details_dict = get_python_details(html_data)
 
@@ -325,27 +340,37 @@ def check_random_ad_url(num_ads):
     """
     creates random URL to check for images
     """
-    import pudb; pudb.set_trace()
     base_url = "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/"
-    rand_selection = random.sample(list(range(999999, 2000000)), num_ads)
-    for rand_num in tqdm(rand_selection, desc="ads in page - "):
-        ad_url = base_url + f"{rand_num}"
-        ad_url = "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/1384424"
-        should_ingest = check_ad_tracking(ad_url)
-        if should_ingest:
-            try:
-                num_images = get_ball_python_data(ad_url)
-                if num_images:
-                    update_ad_tracking(ad_url, num_images)
-                else:
-                    num_images = 0
 
-            except ConnectTimeout as e:
-                tqdm.write(str(e))
-                continue
-            except ReadTimeout as e:
-                tqdm.write(str(e))
-                continue
+    counter = 0
+    checked = 0
+    start_time = time.time()
+    with tqdm(total=num_ads, desc="total adds - ") as pbar:
+        while counter < num_ads:
+            checked += 1
+            rand_num = random.randint(999999, 1600000)
+            ad_url = base_url + f"{rand_num}"
+
+            should_ingest = check_ad_tracking(ad_url)
+            if should_ingest:
+                try:
+                    num_images = get_ball_python_data(ad_url)
+                    time.sleep(3)
+                    if num_images:
+                        update_ad_tracking(ad_url, num_images)
+                        counter += 1
+                        pbar.update(1)
+                    else:
+                        num_images = 0
+
+                except ConnectTimeout as e:
+                    tqdm.write(str(e))
+                    continue
+                except ReadTimeout as e:
+                    tqdm.write(str(e))
+                    continue
+    
+    print(f"{counter} ads processed and {checked} urls checked in {time.time() - start_time} seconds")
 
 if __name__ == "__main__":
     # url = sys.argv[1]
