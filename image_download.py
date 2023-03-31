@@ -76,7 +76,7 @@ def download_images(url: str, html_data, python_details_dict: dict):
         main_trait = "combo"
 
     a_matches = html_data.find_all("a")
-    href_list = [i for i in a_matches if i.get('itemprop') == 'contentUrl']
+    href_list = [i for i in a_matches if i.get("itemprop") == "contentUrl"]
     add_id = f"{main_trait}_{uuid.uuid4().hex}"
     for image_ref in href_list:
         image_source = requests.compat.urljoin(url, image_ref["href"])
@@ -98,7 +98,7 @@ def download_images(url: str, html_data, python_details_dict: dict):
                     f"/home/jordan/github/datasets/ball_pythons/{main_trait}/{add_id}/"
                 )
                 os.makedirs(filepath, exist_ok=True)
-                shutil.move(temp_loc,f"{filepath}{image_name}.png")
+                shutil.move(temp_loc, f"{filepath}{image_name}.png")
                 with open(f"{filepath}{image_name}_metadata.json", "w") as f:
                     json.dump(python_details_dict, f)
 
@@ -111,9 +111,13 @@ def download_images(url: str, html_data, python_details_dict: dict):
             except ConnectionError as e:
                 tqdm.write(str(e))
                 return None
-    end_time = time.time()
-    tqdm.write(f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}")
+    if img_downloaded:
+        end_time = time.time()
+        tqdm.write(
+            f"{img_downloaded} images downloaded in {end_time-start_time} seconds\nfiles saved to {filepath}"
+        )
     return img_downloaded
+
 
 def get_python_details(html_data):
     """
@@ -124,10 +128,10 @@ def get_python_details(html_data):
         python_details_dict: dictionary containing python image metadata
     """
     dict_wanted_fields = {
-         "Sex:": "sex",
-         "Traits:": "traits",
-         "Weight:": "weight",
-         "Birth:": "dob",
+        "Sex:": "sex",
+        "Traits:": "traits",
+        "Weight:": "weight",
+        "Birth:": "dob",
         # "proven_breeder",
         # "price",
     }
@@ -137,8 +141,8 @@ def get_python_details(html_data):
     else:
         return None
 
-    if raw_details:
-        info_pattern = r'>(.*?)<\/span'
+    if raw_details and "Ball Python" in str(raw_details):
+        info_pattern = r">(.*?)<\/span"
         available_info = raw_details.find_all("div", class_="snake-info-card-row")
         actual_info = {}
         for field in available_info:
@@ -153,10 +157,8 @@ def get_python_details(html_data):
                 actual_info["price"] = field_str
         # actual_info = raw_details.find_all("dd")
         # actual_info = [str(value).split("dd")[1].replace("</","").replace(">","") for value in actual_info]
-        
-        python_details_dict = {
-            "raw_details": raw_details.prettify()
-        }
+
+        python_details_dict = {"raw_details": raw_details.prettify()}
 
         traits_pattern = r'">(.*?)</span>'
 
@@ -167,22 +169,30 @@ def get_python_details(html_data):
                 value = field_match.group(1).strip()
             elif field == "traits":
                 trait_chunks = re.findall(traits_pattern, raw_div)
-                trait_list = [trait.strip() for trait in trait_chunks if 'Trait' not in trait.strip()]
+                trait_list = [
+                    trait.strip()
+                    for trait in trait_chunks
+                    if "Trait" not in trait.strip()
+                ]
                 value = trait_list
             elif field == "price":
                 search_pattern = r'">(.*?)</h1>'
                 field_match = re.search(search_pattern, raw_div)
                 value = field_match.group(1).strip()
-            elif field == 'dob' or field == 'weight':
-                value = raw_div.split('">')[-1].split('<')[0]
+            elif field == "dob" or field == "weight":
+                value = raw_div.split('">')[-1].split("<")[0]
             python_details_dict[field] = value
 
         if python_details_dict.get("traits") is not None:
             return python_details_dict
         else:
             return None
+    elif raw_details and "Ball Python" not in raw_details:
+        print("This is not a ball python ad")
+        return None
     else:
         return None
+
 
 @retry(tries=3, delay=0.5, backoff=2)
 def get_ball_python_data(url: str):
@@ -218,7 +228,7 @@ def check_ad_tracking(url: str):
         return True
 
 
-def update_ad_tracking(url:str, num_imgs: int):
+def update_ad_tracking(url: str, num_imgs: int):
     current_ad = {url: num_imgs}
 
     with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "r") as f:
@@ -226,11 +236,11 @@ def update_ad_tracking(url:str, num_imgs: int):
 
     tracking_dict.update(current_ad)
 
-    with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "w") as f: 
-        json.dump(tracking_dict, f) 
+    with open("/home/jordan/github/datasets/ball_pythons/url_tracking.json", "w") as f:
+        json.dump(tracking_dict, f)
 
 
-def find_ball_python_ads(url:str, num_ads: int):
+def find_ball_python_ads(url: str, num_ads: int):
     """
     function that looks at webpage earlier in hierarchy to find subpages
     Args:
@@ -268,7 +278,7 @@ def find_ball_python_ads(url:str, num_ads: int):
                     ads_list.append(ad_link)
                 else:
                     not_ads_list.append(link_href)
-            
+
             for ad_url in tqdm(ads_list, desc="ads in page - "):
                 should_ingest = check_ad_tracking(ad_url)
                 if should_ingest:
@@ -287,12 +297,12 @@ def find_ball_python_ads(url:str, num_ads: int):
                     except ReadTimeout as e:
                         tqdm.write(str(e))
                         continue
-                
+
                 if num_ads_viewed >= num_ads:
                     break
 
             if num_ads_viewed >= num_ads:
-                    break
+                break
 
             page_num += 1
 
@@ -301,7 +311,7 @@ def check_chosen_urls(num_ads: int):
     """
     looks at num_ads for each url in list
     Args:
-        num_ads: number of ads to look at per url 
+        num_ads: number of ads to look at per url
     """
     # url_list = [
     #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/normal",
@@ -330,7 +340,9 @@ def check_chosen_urls(num_ads: int):
     #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/coral%20glow",
     #     "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/gene/butter",
     # ]
-    url_list = ["https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons?state=for_sale"]
+    url_list = [
+        "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons?state=for_sale"
+    ]
 
     for url in url_list:
         find_ball_python_ads(url, int(num_ads))
@@ -345,10 +357,14 @@ def check_random_ad_url(num_ads):
     counter = 0
     checked = 0
     start_time = time.time()
+    rand_list = []
+    rand_list.extend(list(range(999999, 2000000)))
+    rand_list.extend(list(range(1200000, 1650000)))
+    rand_list.extend(list(range(1400000, 1600000)))
     with tqdm(total=num_ads, desc="total adds - ") as pbar:
         while counter < num_ads:
             checked += 1
-            rand_num = random.randint(999999, 1600000)
+            rand_num = random.sample(rand_list, 1)[0]
             ad_url = base_url + f"{rand_num}"
 
             should_ingest = check_ad_tracking(ad_url)
@@ -369,8 +385,13 @@ def check_random_ad_url(num_ads):
                 except ReadTimeout as e:
                     tqdm.write(str(e))
                     continue
-    
-    print(f"{counter} ads processed and {checked} urls checked in {time.time() - start_time} seconds")
+            else:
+                print("Ad previously processed")
+
+    print(
+        f"{counter} ads processed and {checked} urls checked in {time.time() - start_time} seconds"
+    )
+
 
 if __name__ == "__main__":
     # url = sys.argv[1]
