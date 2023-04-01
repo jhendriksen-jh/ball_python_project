@@ -188,7 +188,7 @@ def get_python_details(html_data):
         else:
             return None
     elif raw_details and "Ball Python" not in raw_details:
-        print("This is not a ball python ad")
+        tqdm.write("This is not a ball python ad")
         return None
     else:
         return None
@@ -354,6 +354,7 @@ def check_random_ad_url(num_ads):
     """
     base_url = "https://www.morphmarket.com/us/c/reptiles/pythons/ball-pythons/"
 
+    total_imgs = 0
     counter = 0
     checked = 0
     start_time = time.time()
@@ -371,13 +372,17 @@ def check_random_ad_url(num_ads):
             if should_ingest:
                 try:
                     num_images = get_ball_python_data(ad_url)
-                    time.sleep(3)
+
                     if num_images:
                         update_ad_tracking(ad_url, num_images)
                         counter += 1
+                        total_imgs += num_images
                         pbar.update(1)
                     else:
                         num_images = 0
+
+                    sleep_time = random.randint(2,7)
+                    time.sleep(sleep_time)
 
                 except ConnectTimeout as e:
                     tqdm.write(str(e))
@@ -386,10 +391,10 @@ def check_random_ad_url(num_ads):
                     tqdm.write(str(e))
                     continue
             else:
-                print("Ad previously processed")
+                tqdm.write("Ad previously processed")
 
     print(
-        f"{counter} ads processed and {checked} urls checked in {time.time() - start_time} seconds"
+        f"{counter} ads processed and {checked} urls checked in {time.time() - start_time} seconds with {total_imgs} images downloaded"
     )
 
 
