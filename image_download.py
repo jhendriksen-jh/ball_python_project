@@ -359,9 +359,8 @@ def check_random_ad_url(num_ads):
     checked = 0
     start_time = time.time()
     rand_list = []
-    rand_list.extend(list(range(999999, 2000000)))
-    rand_list.extend(list(range(1200000, 1650000)))
-    rand_list.extend(list(range(1400000, 1600000)))
+    rand_list.extend(list(range(99999, 1750000)))
+    rand_list.extend(list(range(99999, 1000000)))
     with tqdm(total=num_ads, desc="total adds - ") as pbar:
         while counter < num_ads:
             checked += 1
@@ -381,7 +380,7 @@ def check_random_ad_url(num_ads):
                     else:
                         num_images = 0
 
-                    sleep_time = random.randint(2,7)
+                    sleep_time = random.randint(2,5)
                     time.sleep(sleep_time)
 
                 except ConnectTimeout as e:
